@@ -1,8 +1,9 @@
 # Betaflight Configurator MCP Bridge
 
-Dev-only bridge that lets an MCP client (Claude Code, Claude Desktop, ...)
-drive the web version of Betaflight Configurator: read/write PID, rate and
-filter parameters item-by-item over MSP, and switch UI tabs.
+A standard stdio MCP server, so it works with any MCP client (Claude Code,
+Claude Desktop, Codex CLI, ...). It drives the web version of Betaflight
+Configurator: read/write PID, rate and filter parameters item-by-item over
+MSP, and switch UI tabs.
 
 日本語の使い方ガイドは [MANUAL.ja.md](./MANUAL.ja.md) を参照してください。
 
@@ -20,17 +21,35 @@ runs in Vite dev mode (`npm run dev`); it is never part of production builds.
 1. Install dependencies (repo root): `npm install`
 2. Start the Configurator: `npm run dev` and open the app in a browser
 3. Connect your flight controller in the Configurator
-4. Register the bridge with Claude Code:
+4. Register the bridge with your MCP client:
+
+   **Claude Code**
 
    ```bash
    claude mcp add betaflight -- node /ABSOLUTE/PATH/TO/betaflight-configurator/tools/mcp-bridge/server.js
    ```
 
-   (Claude Desktop: add the same command to `mcpServers` in its config.)
+   **Claude Desktop** — add the same command to `mcpServers` in its config,
+   or install the packaged extension (`npm run mcp-bridge:mcpb`).
+
+   **Codex CLI** — add to `~/.codex/config.toml`:
+
+   ```toml
+   [mcp_servers.betaflight]
+   command = "node"
+   args = ["/ABSOLUTE/PATH/TO/betaflight-configurator/tools/mcp-bridge/server.js"]
+   ```
+
+   Any other MCP client works too: the server speaks stdio MCP, so point the
+   client at `node .../tools/mcp-bridge/server.js`.
 
 The bridge can also be started manually with `npm run mcp-bridge` to check
 that it boots, but MCP clients normally spawn it themselves via the command
 registered above.
+
+Note: the WebSocket port (8765) is shared, so only one MCP client can be
+connected to the Configurator at a time. A second client's bridge process
+stays alive and takes over automatically once the first one exits.
 
 ## Tools
 

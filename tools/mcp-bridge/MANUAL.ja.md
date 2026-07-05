@@ -60,7 +60,20 @@ claude mcp add betaflight -- node /Users/yukiyamamotopersonal/Repo/betaflight-co
 }
 ```
 
-登録は1回だけでOK。以降は Claude が必要なときに中継サーバーを自動起動します。
+**Codex CLI の場合:** `~/.codex/config.toml` に追記:
+
+```toml
+[mcp_servers.betaflight]
+command = "node"
+args = ["/Users/yukiyamamotopersonal/Repo/betaflight-configurator/tools/mcp-bridge/server.js"]
+```
+
+このブリッジは標準の stdio MCP サーバーなので、Claude 以外の MCP 対応クライアント
+(Codex など)からも同じ `node .../server.js` を指すだけで利用できます。
+
+登録は1回だけでOK。以降はクライアントが必要なときに中継サーバーを自動起動します。
+なお、WebSocketポート(8765)は共有のため、Configuratorに同時接続できるMCP
+クライアントは1つだけです(先に使っている方を閉じれば、もう一方が自動で引き継ぎます)。
 
 ## 3. 毎回の使い方(3ステップ)
 
