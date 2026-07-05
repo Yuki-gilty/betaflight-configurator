@@ -42,7 +42,18 @@ registered above.
 | `get_rates` / `set_rates` | Rate parameters, partial updates by key |
 | `get_filters` / `set_filters` | Gyro/D-term filter parameters, partial updates by key |
 | `save_to_flash` | Persist RAM changes to flash (destructive - confirm first) |
+| `get_blackbox_info` | Onboard dataflash state (supported/used bytes) |
+| `download_blackbox` / `blackbox_download_status` | Background download of the blackbox log to a local .bbl |
+| `erase_blackbox` | Erase onboard dataflash (destructive - confirm first) |
 | `msp_command` | Raw MSP escape hatch (advanced) |
+
+## Blackbox auto-tuning
+
+`analyze_bbl.py` decodes a .bbl (via `blackbox_decode`) and outputs per-axis
+step-response metrics, gyro noise summaries and motor saturation as JSON for
+an LLM to interpret. The `/bb-tune` project skill (`.claude/skills/bb-tune/`)
+orchestrates the whole download → analyze → propose → apply loop. See
+MANUAL.ja.md §8 for the user-facing workflow.
 
 `set_*` changes live in FC RAM until `save_to_flash` is called - a power
 cycle reverts them, which is intentional for safe experimentation.
