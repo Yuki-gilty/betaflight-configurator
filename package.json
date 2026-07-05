@@ -31,7 +31,8 @@
     "format": "prettier --write {src,test}/**/*.{js,vue,css,less}",
     "storybook": "storybook dev -p 6006",
     "prepare": "husky",
-    "mcp-bridge": "node tools/mcp-bridge/server.js"
+    "mcp-bridge": "node tools/mcp-bridge/server.js",
+    "mcp-bridge:mcpb": "node tools/mcp-bridge/build-mcpb.mjs"
   },
   "window": {
     "icon": "images/bf_icon_128.png",

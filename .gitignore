@@ -58,3 +58,4 @@ components.d.ts
 /.claude
 /AGENTS.md
 /blackbox-tools
+/tools/mcp-bridge/dist-mcpb
