@@ -52,3 +52,11 @@ if (!isAndroid() && !isEmbeddedDeployment()) {
         },
     });
 }
+
+// Dev-only: allow an external MCP agent to drive the Configurator.
+// The module is loaded dynamically so it is never part of production builds.
+if (import.meta.env.DEV) {
+    import("./agent_bridge/index.js")
+        .then(({ startAgentBridge }) => startAgentBridge())
+        .catch((error) => console.warn("[agent-bridge] failed to start", error));
+}
