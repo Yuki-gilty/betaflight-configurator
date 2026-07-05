@@ -7870,6 +7870,21 @@
     "showNotifications": {
         "message": "長時間の操作に対する通知を表示"
     },
+    "agentBridgeEnabled": {
+        "message": "AIエージェント(MCP)連携を有効にする"
+    },
+    "agentBridgeStatusConnected": {
+        "message": "接続中"
+    },
+    "agentBridgeStatusWaiting": {
+        "message": "AIエージェント待機中"
+    },
+    "agentBridgeConnected": {
+        "message": "AIエージェント(MCP)が接続されました"
+    },
+    "agentBridgeDisconnected": {
+        "message": "AIエージェント(MCP)が切断されました"
+    },
     "notificationsDeniedTitle": {
         "message": "通知がブロックされています",
         "description": "Title when Notifications has no or denied permissions"

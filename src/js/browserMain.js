@@ -12,7 +12,7 @@ import { i18n } from "./localization";
 import { pinia } from "./pinia_instance";
 import { useDialogStore } from "../stores/dialog";
 import { registerSW } from "virtual:pwa-register";
-import { isAndroid, isEmbeddedDeployment } from "./utils/checkCompatibility.js";
+import { isAndroid, isEmbeddedDeployment, isTauri } from "./utils/checkCompatibility.js";
 
 // Skip PWA/service-worker on embedded deployments (WebSocket-only host, plain HTTP)
 // and Android native builds where they are unnecessary
@@ -53,10 +53,11 @@ if (!isAndroid() && !isEmbeddedDeployment()) {
     });
 }
 
-// Dev-only: allow an external MCP agent to drive the Configurator.
-// The module is loaded dynamically so it is never part of production builds.
-if (import.meta.env.DEV) {
+// Allow an external MCP agent (Claude Desktop / Claude Code) to drive the
+// Configurator. Available in dev mode and Tauri desktop builds; whether it
+// actually connects is controlled by the AI agent toggle in Options.
+if (import.meta.env.DEV || isTauri()) {
     import("./agent_bridge/index.js")
-        .then(({ startAgentBridge }) => startAgentBridge())
+        .then(({ initAgentBridge }) => initAgentBridge())
         .catch((error) => console.warn("[agent-bridge] failed to start", error));
 }

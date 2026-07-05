@@ -9,6 +9,15 @@ vi.mock("../../../src/js/agent_bridge/handlers.js", () => ({
     }),
 }));
 
+const mockConfig = {};
+const mockGuiLog = vi.fn();
+vi.mock("../../../src/js/ConfigStorage.js", () => ({
+    get: (key, defaultValue) => ({ [key]: mockConfig[key] ?? defaultValue }),
+    set: (obj) => Object.assign(mockConfig, obj),
+}));
+vi.mock("../../../src/js/gui_log.js", () => ({ gui_log: (msg) => mockGuiLog(msg) }));
+vi.mock("../../../src/js/localization.js", () => ({ i18n: { getMessage: (key) => key } }));
+
 class FakeWebSocket {
     static OPEN = 1;
     static instances = [];
@@ -31,7 +40,8 @@ class FakeWebSocket {
     }
 }
 
-const { startAgentBridge } = await import("../../../src/js/agent_bridge/index.js");
+const { startAgentBridge, setAgentBridgeEnabled, subscribeAgentBridge } =
+    await import("../../../src/js/agent_bridge/index.js");
 
 describe("startAgentBridge", () => {
     let stop;
@@ -66,6 +76,26 @@ describe("startAgentBridge", () => {
         const socket = FakeWebSocket.instances[0];
         await socket.receive({ id: 3, method: "nope", params: {} });
         expect(socket.sent[0].error).toMatch(/unknown method/i);
+    });
+
+    it("reports connection status changes and logs to the GUI", async () => {
+        setAgentBridgeEnabled(true);
+        expect(mockConfig.agentBridgeEnabled).toBe(true);
+
+        const seen = [];
+        const unsubscribe = subscribeAgentBridge((s) => seen.push(s));
+        expect(seen[0].enabled).toBe(true);
+
+        const socket = FakeWebSocket.instances.at(-1);
+        socket.onopen?.();
+        expect(seen.at(-1).connected).toBe(true);
+        expect(mockGuiLog).toHaveBeenCalledWith("agentBridgeConnected");
+
+        setAgentBridgeEnabled(false);
+        expect(mockConfig.agentBridgeEnabled).toBe(false);
+        expect(seen.at(-1)).toEqual({ enabled: false, connected: false });
+        expect(mockGuiLog).toHaveBeenCalledWith("agentBridgeDisconnected");
+        unsubscribe();
     });
 
     it("reconnects after the socket closes, and stop() prevents it", async () => {

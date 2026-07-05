@@ -34,6 +34,29 @@
                     <SettingRow :label="$t('showNotifications')">
                         <USwitch v-model="settings.showNotifications" size="sm" />
                     </SettingRow>
+                    <SettingRow v-if="agentBridgeAvailable" :label="$t('agentBridgeEnabled')">
+                        <div class="flex items-center gap-3">
+                            <span
+                                v-if="agentBridge.enabled"
+                                class="text-xs font-semibold"
+                                :class="agentBridge.connected ? 'text-green-500' : 'text-gray-400'"
+                            >
+                                ●
+                                {{
+                                    $t(
+                                        agentBridge.connected
+                                            ? "agentBridgeStatusConnected"
+                                            : "agentBridgeStatusWaiting",
+                                    )
+                                }}
+                            </span>
+                            <USwitch
+                                :model-value="agentBridge.enabled"
+                                size="sm"
+                                @update:model-value="setAgentBridge"
+                            />
+                        </div>
+                    </SettingRow>
                 </UiBox>
 
                 <UiBox :title="$t('languageAndAppearanceSettings')">
@@ -163,6 +186,7 @@ import NotificationManager from "../../js/utils/notifications";
 import { ispConnected } from "../../js/utils/connection";
 import { DEFAULT_DEVELOPMENT_OPTIONS, resetDevelopmentOptions } from "../../js/utils/developmentOptions";
 import { applyExpertMode } from "../../js/utils/applyExpertMode";
+import { isTauri } from "../../js/utils/checkCompatibility.js";
 import UiBox from "../elements/UiBox.vue";
 import SettingRow from "../elements/SettingRow.vue";
 
@@ -201,6 +225,21 @@ const settings = reactive({
 });
 
 const availableLanguages = i18n.getLanguagesAvailables();
+
+// AI agent (MCP) bridge: only in dev mode and Tauri desktop builds. Loaded
+// dynamically so it never ends up in production web bundles.
+const agentBridgeAvailable = import.meta.env.DEV || isTauri();
+const agentBridge = reactive({ enabled: false, connected: false });
+let agentBridgeApi = null;
+let unsubscribeAgentBridge = null;
+if (agentBridgeAvailable) {
+    import("../../js/agent_bridge/index.js").then((mod) => {
+        agentBridgeApi = mod;
+        unsubscribeAgentBridge = mod.subscribeAgentBridge((state) => Object.assign(agentBridge, state));
+    });
+}
+const setAgentBridge = (value) => agentBridgeApi?.setAgentBridgeEnabled(value);
+onUnmounted(() => unsubscribeAgentBridge?.());
 
 // Re-sync all config-backed settings when the dialog opens, so values changed
 // externally (e.g. sidebar quick-toggles for dark/expert mode) are reflected.

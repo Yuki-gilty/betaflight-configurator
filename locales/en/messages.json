@@ -8717,6 +8717,21 @@
     "showNotifications": {
         "message": "Show notifications for long operations"
     },
+    "agentBridgeEnabled": {
+        "message": "Enable AI agent (MCP) connection"
+    },
+    "agentBridgeStatusConnected": {
+        "message": "Connected"
+    },
+    "agentBridgeStatusWaiting": {
+        "message": "Waiting for AI agent"
+    },
+    "agentBridgeConnected": {
+        "message": "AI agent (MCP) connected"
+    },
+    "agentBridgeDisconnected": {
+        "message": "AI agent (MCP) disconnected"
+    },
     "notificationsDeniedTitle": {
         "message": "Notifications blocked",
         "description": "Title when Notifications has no or denied permissions"
