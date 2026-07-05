@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { homedir } from "node:os";
+import path from "node:path";
+import { downloadBlackbox } from "./downloader.js";
 
 const axisShape = z
     .object({
@@ -107,6 +110,61 @@ export function registerTools(server, relay) {
                 "Confirm with the user before calling.",
         },
         forward("save_to_flash"),
+    );
+
+    const asText = (value) => ({ content: [{ type: "text", text: JSON.stringify(value, null, 2) }] });
+    let downloadJob = null;
+
+    server.registerTool(
+        "get_blackbox_info",
+        { description: "Get onboard dataflash (blackbox log) state: supported, ready, total and used bytes." },
+        forward("get_blackbox_info"),
+    );
+
+    server.registerTool(
+        "download_blackbox",
+        {
+            description:
+                "Start downloading the blackbox log from the FC's onboard dataflash to a .bbl file on this machine. " +
+                "Returns immediately; poll blackbox_download_status for progress (flash reads take roughly a minute " +
+                "per few MB). The file path is included in the status once done.",
+        },
+        async () => {
+            if (downloadJob?.inProgress) {
+                return { isError: true, content: [{ type: "text", text: "A download is already in progress." }] };
+            }
+            const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+            const filePath = path.join(homedir(), ".betaflight-mcp", "logs", `blackbox_${stamp}.bbl`);
+            downloadJob = { inProgress: true, done: false, bytesRead: 0, totalBytes: null, filePath, error: null };
+            downloadBlackbox(relay, {
+                filePath,
+                onProgress: (bytesRead, totalBytes) => Object.assign(downloadJob, { bytesRead, totalBytes }),
+            })
+                .then((result) => Object.assign(downloadJob, { inProgress: false, done: true, ...result }))
+                .catch((error) => Object.assign(downloadJob, { inProgress: false, error: error.message }));
+            return asText({ started: true, filePath });
+        },
+    );
+
+    server.registerTool(
+        "blackbox_download_status",
+        { description: "Check the progress of a download started with download_blackbox." },
+        async () => {
+            if (!downloadJob) {
+                return { isError: true, content: [{ type: "text", text: "No download has been started." }] };
+            }
+            return asText(downloadJob);
+        },
+    );
+
+    server.registerTool(
+        "erase_blackbox",
+        {
+            description:
+                "DESTRUCTIVE: erase all blackbox logs on the FC's onboard dataflash (MSP_DATAFLASH_ERASE). " +
+                "Download first if the data is needed. Confirm with the user before calling.",
+        },
+        forward("erase_blackbox"),
     );
 
     server.registerTool(

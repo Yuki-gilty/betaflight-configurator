@@ -135,8 +135,37 @@ Claude は状況に応じて自動でこれらを使います(あなたが直接
 | ポート8765が他のアプリと競合 | 中継サーバーは `BF_BRIDGE_PORT` 環境変数で変更可。ただし Configurator 側は 8765 固定なので、変える場合は `src/js/agent_bridge/index.js` の `DEFAULT_URL` も合わせて変更 |
 | 変更したのに再起動したら消えた | 仕様です(§4のポイント参照)。残したい場合は「保存して」(`save_to_flash`) |
 
-## 8. いまできないこと(今後の拡張ポイント)
+## 8. Blackbox自動チューニング(/bb-tune)
+
+飛行ログ(Blackbox)の取得→解析→PID/フィルタの改善提案→適用を一言で行えます。
+
+```
+飛ばしてログを録る → 着陸してUSB接続 → Claude Codeで:
+「ブラックボックス解析してPID改善して」(または /bb-tune)
+```
+
+Claude が自動で行うこと:
+
+1. FCのフラッシュからログをダウンロード(`download_blackbox`、数MBで1分程度。進捗を報告)
+2. `blackbox_decode` でデコードし、`tools/mcp-bridge/analyze_bbl.py` で解析
+   (各軸のステップ応答: オーバーシュート/立ち上がり/整定、ジャイロノイズ、モーター飽和)
+3. 結果を数値つきで説明し、PID/フィルタの変更案を提示(1回の変更は±10%以内・2〜3項目まで)
+4. `set_pid_tuning` / `set_filters` でRAMに適用(保存はあなたが「保存して」と言ったときだけ)
+5. 確認のうえ `erase_blackbox` で次のフライトに備える
+
+**初回だけ必要な準備:**
+
+```bash
+pip3 install numpy scipy
+git clone https://github.com/betaflight/blackbox-tools
+cd blackbox-tools && make && cp obj/blackbox_decode /usr/local/bin/
+```
+
+手元に .bbl ファイルが既にある場合は「~/Downloads/xxx.bbl を解析して」でもOK(ダウンロード工程をスキップ)。
+
+## 9. いまできないこと(今後の拡張ポイント)
 
 - 対応している設定分野は **PID・レート・フィルタ** の3つ。OSD・モード設定・モーター構成などは未対応(必要なら `handlers.js` と `tools.js` に1分野ずつ追加できる設計)
+- Blackboxダウンロードはオンボードフラッシュのみ対応。SDカードロギングの機体はカードを直接読む方が速い
 - 公開版(app.betaflight.com)やデスクトップ(Tauri)版では使えない
 - ブラウザタブは最後に開いた1つだけが有効(複数タブ同時操作は不可)

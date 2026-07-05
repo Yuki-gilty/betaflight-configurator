@@ -6,19 +6,23 @@ const mockFC = {
     RC_TUNING: {},
     FILTER_CONFIG: {},
     CONFIG: {},
+    DATAFLASH: {},
 };
 const mockMSP = { promise: vi.fn() };
 const mockCONFIGURATOR = { connectionValid: true };
 const mockGUI = { active_tab: "setup" };
 const mockSwitchTab = vi.fn();
 const mockCrunch = vi.fn(() => new Uint8Array([1, 2]));
+const mockDataflashRead = vi.fn();
 
 vi.mock("../../../src/js/fc.js", () => ({ default: mockFC }));
 vi.mock("../../../src/js/msp.js", () => ({ default: mockMSP }));
 vi.mock("../../../src/js/data_storage.js", () => ({ default: mockCONFIGURATOR }));
 vi.mock("../../../src/js/gui.js", () => ({ default: mockGUI }));
 vi.mock("../../../src/js/tab_switch.js", () => ({ switchTab: mockSwitchTab }));
-vi.mock("../../../src/js/msp/MSPHelper.js", () => ({ mspHelper: { crunch: mockCrunch } }));
+vi.mock("../../../src/js/msp/MSPHelper.js", () => ({
+    mspHelper: { crunch: mockCrunch, dataflashRead: mockDataflashRead },
+}));
 vi.mock("../../../src/components/sidebar/sidebar_items.js", () => ({
     sidebarItems: [
         { tab: "setup", i18n: "tabSetup" },
@@ -134,6 +138,31 @@ describe("agent bridge handlers", () => {
         const result = await handlers.msp_command({ code: 112, data: [1, 2] });
         expect(mockMSP.promise).toHaveBeenCalledWith(112, expect.any(Uint8Array));
         expect(result).toEqual({ code: 112, response: [9, 8, 7] });
+    });
+
+    it("get_blackbox_info refreshes the dataflash summary", async () => {
+        mockFC.DATAFLASH = { ready: true, supported: true, sectors: 128, totalSize: 8388608, usedSize: 123456 };
+        const info = await handlers.get_blackbox_info();
+        expect(mockMSP.promise).toHaveBeenCalledWith(MSPCodes.MSP_DATAFLASH_SUMMARY, false);
+        expect(info).toEqual({ ready: true, supported: true, sectors: 128, totalSize: 8388608, usedSize: 123456 });
+    });
+
+    it("read_dataflash_chunk returns base64-encoded bytes", async () => {
+        mockDataflashRead.mockImplementationOnce((address, size, cb) => {
+            cb(address, new DataView(Uint8Array.from([1, 2, 3]).buffer));
+        });
+        const result = await handlers.read_dataflash_chunk({ address: 0, size: 4096 });
+        expect(result).toEqual({ address: 0, bytes: 3, base64: btoa("\x01\x02\x03") });
+    });
+
+    it("read_dataflash_chunk rejects when the read fails", async () => {
+        mockDataflashRead.mockImplementationOnce((address, size, cb) => cb(address, null));
+        await expect(handlers.read_dataflash_chunk({ address: 100, size: 4096 })).rejects.toThrow(/failed/i);
+    });
+
+    it("erase_blackbox sends MSP_DATAFLASH_ERASE", async () => {
+        await expect(handlers.erase_blackbox()).resolves.toEqual({ erased: true });
+        expect(mockMSP.promise).toHaveBeenCalledWith(MSPCodes.MSP_DATAFLASH_ERASE, false);
     });
 
     it("write handlers reject when FC is not connected", async () => {

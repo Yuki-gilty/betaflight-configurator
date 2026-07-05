@@ -154,6 +154,37 @@ export function createHandlers() {
             return { saved: true };
         },
 
+        async get_blackbox_info() {
+            requireFc();
+            await MSP.promise(MSPCodes.MSP_DATAFLASH_SUMMARY, false);
+            return { ...FC.DATAFLASH };
+        },
+
+        async read_dataflash_chunk({ address, size } = {}) {
+            requireFc();
+            const dataView = await new Promise((resolve, reject) => {
+                mspHelper.dataflashRead(address, size ?? 4096, (chunkAddress, chunk) => {
+                    if (chunk === null) {
+                        reject(new Error(`Dataflash read failed at address ${address}`));
+                    } else {
+                        resolve(chunk);
+                    }
+                });
+            });
+            const bytes = new Uint8Array(dataView.buffer, dataView.byteOffset, dataView.byteLength);
+            let binary = "";
+            for (let i = 0; i < bytes.length; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return { address, bytes: bytes.length, base64: btoa(binary) };
+        },
+
+        async erase_blackbox() {
+            requireFc();
+            await MSP.promise(MSPCodes.MSP_DATAFLASH_ERASE, false);
+            return { erased: true };
+        },
+
         async msp_command({ code, data } = {}) {
             requireFc();
             const payload = Array.isArray(data) && data.length > 0 ? Uint8Array.from(data) : false;
