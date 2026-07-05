@@ -4,6 +4,8 @@ Dev-only bridge that lets an MCP client (Claude Code, Claude Desktop, ...)
 drive the web version of Betaflight Configurator: read/write PID, rate and
 filter parameters item-by-item over MSP, and switch UI tabs.
 
+日本語の使い方ガイドは [MANUAL.ja.md](./MANUAL.ja.md) を参照してください。
+
 ## Architecture
 
 ```
