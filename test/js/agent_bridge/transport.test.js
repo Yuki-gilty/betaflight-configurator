@@ -17,6 +17,12 @@ vi.mock("../../../src/js/ConfigStorage.js", () => ({
 }));
 vi.mock("../../../src/js/gui_log.js", () => ({ gui_log: (msg) => mockGuiLog(msg) }));
 vi.mock("../../../src/js/localization.js", () => ({ i18n: { getMessage: (key) => key } }));
+const mockShowOverlay = vi.fn();
+const mockHideOverlay = vi.fn();
+vi.mock("../../../src/js/agent_bridge/overlay.js", () => ({
+    showAgentOverlay: (...a) => mockShowOverlay(...a),
+    hideAgentOverlay: (...a) => mockHideOverlay(...a),
+}));
 
 class FakeWebSocket {
     static OPEN = 1;
@@ -93,9 +99,30 @@ describe("startAgentBridge", () => {
 
         setAgentBridgeEnabled(false);
         expect(mockConfig.agentBridgeEnabled).toBe(false);
-        expect(seen.at(-1)).toEqual({ enabled: false, connected: false });
+        expect(seen.at(-1)).toEqual({ enabled: false, connected: false, active: false });
         expect(mockGuiLog).toHaveBeenCalledWith("agentBridgeDisconnected");
         unsubscribe();
+    });
+
+    it("shows the blue overlay while a command runs and hides it after a linger", async () => {
+        vi.useFakeTimers();
+        mockShowOverlay.mockClear();
+        mockHideOverlay.mockClear();
+        setAgentBridgeEnabled(true);
+        const socket = FakeWebSocket.instances.at(-1);
+
+        // onActivity(method) fires synchronously before the handler awaits,
+        // so the overlay shows immediately when the command starts
+        const done = socket.onmessage({ data: JSON.stringify({ id: 1, method: "ping", params: { value: 1 } }) });
+        expect(mockShowOverlay).toHaveBeenCalled();
+        expect(mockHideOverlay).not.toHaveBeenCalled();
+
+        // flush the handler microtask and the linger timer
+        await vi.runAllTimersAsync();
+        await done;
+        expect(mockHideOverlay).toHaveBeenCalled();
+
+        setAgentBridgeEnabled(false);
     });
 
     it("reconnects after the socket closes, and stop() prevents it", async () => {

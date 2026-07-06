@@ -7885,6 +7885,9 @@
     "agentBridgeDisconnected": {
         "message": "AIエージェント(MCP)が切断されました"
     },
+    "agentBridgeOverlayLabel": {
+        "message": "AIエージェントが操作中です"
+    },
     "notificationsDeniedTitle": {
         "message": "通知がブロックされています",
         "description": "Title when Notifications has no or denied permissions"

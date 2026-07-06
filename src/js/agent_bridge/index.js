@@ -1,4 +1,5 @@
 import { createHandlers } from "./handlers.js";
+import { showAgentOverlay, hideAgentOverlay } from "./overlay.js";
 import { get as getConfig, set as setConfig } from "../ConfigStorage.js";
 import { gui_log } from "../gui_log.js";
 import { i18n } from "../localization.js";
@@ -11,7 +12,7 @@ const RECONNECT_DELAY_MS = 3000;
  * drive the Configurator. Loaded in dev mode and Tauri desktop builds;
  * connects only while the user has enabled it in Options.
  */
-export function startAgentBridge({ url = DEFAULT_URL, onStatus } = {}) {
+export function startAgentBridge({ url = DEFAULT_URL, onStatus, onActivity } = {}) {
     const handlers = createHandlers();
     let stopped = false;
 
@@ -38,10 +39,13 @@ export function startAgentBridge({ url = DEFAULT_URL, onStatus } = {}) {
             if (!handler) {
                 reply = { id: request.id, error: `Unknown method '${request.method}'` };
             } else {
+                onActivity?.(request.method);
                 try {
                     reply = { id: request.id, result: (await handler(request.params ?? {})) ?? null };
                 } catch (error) {
                     reply = { id: request.id, error: error?.message ?? String(error) };
+                } finally {
+                    onActivity?.(null);
                 }
             }
             if (socket.readyState === WebSocket.OPEN) {
@@ -65,9 +69,44 @@ export function startAgentBridge({ url = DEFAULT_URL, onStatus } = {}) {
 
 // --- user-facing on/off switch and connection state ---
 
-const state = { enabled: false, connected: false };
+const state = { enabled: false, connected: false, active: false };
 const listeners = new Set();
 let stopBridge = null;
+
+// Overlay activity tracking: keep the blue overlay up while any command runs,
+// and linger briefly after the last one so quick commands remain perceptible.
+const OVERLAY_LINGER_MS = 700;
+let inFlight = 0;
+let overlayHideTimer = null;
+
+function setActive(active) {
+    if (state.active === active) {
+        return;
+    }
+    state.active = active;
+    notifyListeners();
+}
+
+function handleActivity(method) {
+    if (method !== null) {
+        inFlight += 1;
+        if (overlayHideTimer) {
+            clearTimeout(overlayHideTimer);
+            overlayHideTimer = null;
+        }
+        showAgentOverlay(i18n.getMessage("agentBridgeOverlayLabel"));
+        setActive(true);
+    } else {
+        inFlight = Math.max(0, inFlight - 1);
+        if (inFlight === 0) {
+            overlayHideTimer = setTimeout(() => {
+                overlayHideTimer = null;
+                hideAgentOverlay();
+                setActive(false);
+            }, OVERLAY_LINGER_MS);
+        }
+    }
+}
 
 function notifyListeners() {
     for (const listener of listeners) {
@@ -89,13 +128,20 @@ function start() {
         return;
     }
     state.enabled = true;
-    stopBridge = startAgentBridge({ onStatus: handleStatus });
+    stopBridge = startAgentBridge({ onStatus: handleStatus, onActivity: handleActivity });
     notifyListeners();
 }
 
 function stop() {
     stopBridge?.();
     stopBridge = null;
+    if (overlayHideTimer) {
+        clearTimeout(overlayHideTimer);
+        overlayHideTimer = null;
+    }
+    inFlight = 0;
+    hideAgentOverlay();
+    state.active = false;
     state.enabled = false;
     if (state.connected) {
         state.connected = false;
