@@ -38,8 +38,9 @@ function pidSnapshot() {
 }
 
 async function refreshPids() {
-    await MSP.promise(MSPCodes.MSP_PID, false);
-    await MSP.promise(MSPCodes.MSP_PID_ADVANCED, false);
+    // The MSP layer matches responses by code and supports multiple in-flight
+    // requests, so send both reads concurrently instead of paying two round-trips.
+    await Promise.all([MSP.promise(MSPCodes.MSP_PID, false), MSP.promise(MSPCodes.MSP_PID_ADVANCED, false)]);
 }
 
 // Shared read-modify-write cycle for flat numeric sections (rates, filters).
@@ -106,12 +107,14 @@ export function createHandlers() {
             const touchesPid = axisChanges.some((c) => PID_TERMS.some(([term]) => c[term] !== undefined));
             const touchesFf = axisChanges.some((c) => c.FF !== undefined);
 
+            const reads = [];
             if (touchesPid) {
-                await MSP.promise(MSPCodes.MSP_PID, false);
+                reads.push(MSP.promise(MSPCodes.MSP_PID, false));
             }
             if (touchesFf) {
-                await MSP.promise(MSPCodes.MSP_PID_ADVANCED, false);
+                reads.push(MSP.promise(MSPCodes.MSP_PID_ADVANCED, false));
             }
+            await Promise.all(reads);
             for (const [axis, index, ffKey] of AXES) {
                 const changes = params?.[axis];
                 if (!changes) {
@@ -126,12 +129,16 @@ export function createHandlers() {
                     FC.ADVANCED_TUNING[ffKey] = changes.FF;
                 }
             }
+            const writes = [];
             if (touchesPid) {
-                await MSP.promise(MSPCodes.MSP_SET_PID, mspHelper.crunch(MSPCodes.MSP_SET_PID));
+                writes.push(MSP.promise(MSPCodes.MSP_SET_PID, mspHelper.crunch(MSPCodes.MSP_SET_PID)));
             }
             if (touchesFf) {
-                await MSP.promise(MSPCodes.MSP_SET_PID_ADVANCED, mspHelper.crunch(MSPCodes.MSP_SET_PID_ADVANCED));
+                writes.push(
+                    MSP.promise(MSPCodes.MSP_SET_PID_ADVANCED, mspHelper.crunch(MSPCodes.MSP_SET_PID_ADVANCED)),
+                );
             }
+            await Promise.all(writes);
             return pidSnapshot();
         },
 
