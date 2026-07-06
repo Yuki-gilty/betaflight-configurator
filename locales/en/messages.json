@@ -8732,8 +8732,8 @@
     "agentBridgeDisconnected": {
         "message": "AI agent (MCP) disconnected"
     },
-    "agentBridgeOverlayLabel": {
-        "message": "AI agent is controlling this app"
+    "agentBridgeStatusActive": {
+        "message": "Operating..."
     },
     "notificationsDeniedTitle": {
         "message": "Notifications blocked",

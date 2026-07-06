@@ -1,94 +1,90 @@
 /**
- * Full-screen blue gradient overlay shown while an MCP agent is actively
- * driving the Configurator, so it is unmistakable that the app is being
- * operated by an AI agent rather than the user. Pure DOM (no Vue) so it works
- * regardless of the active tab and sits above every dialog.
+ * Small top-right status badge that shows the MCP agent bridge state
+ * (waiting / connected / operating) with a colored status dot. Pure DOM
+ * (no Vue) so it works regardless of the active tab and sits above dialogs.
+ * Presentation only: index.js decides the tone/text from the bridge state.
  */
-let overlayEl = null;
+let badgeEl = null;
 
-function ensureOverlay(label) {
-    if (overlayEl) {
-        return overlayEl;
+function ensureBadge() {
+    if (badgeEl) {
+        return badgeEl;
     }
 
-    if (!document.getElementById("agent-bridge-overlay-style")) {
+    if (!document.getElementById("agent-bridge-status-style")) {
         const style = document.createElement("style");
-        style.id = "agent-bridge-overlay-style";
+        style.id = "agent-bridge-status-style";
         style.textContent = `
-@keyframes agentBridgePulse {
-    0%, 100% { opacity: 0.55; }
-    50% { opacity: 0.85; }
+@keyframes agentBridgeDotPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
 }
-#agent-bridge-overlay {
+#agent-bridge-status {
     position: fixed;
-    inset: 0;
+    top: 10px;
+    right: 12px;
     z-index: 2147483000;
     pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.2s ease;
-    background:
-        radial-gradient(circle at 50% 0%, rgba(56, 152, 255, 0.30), transparent 60%),
-        linear-gradient(160deg, rgba(20, 110, 240, 0.28) 0%, rgba(10, 60, 180, 0.14) 45%, rgba(56, 152, 255, 0.30) 100%);
-    box-shadow: inset 0 0 0 4px rgba(56, 152, 255, 0.9), inset 0 0 120px 20px rgba(56, 152, 255, 0.55);
-    animation: agentBridgePulse 2s ease-in-out infinite;
-}
-#agent-bridge-overlay.is-visible { opacity: 1; }
-#agent-bridge-overlay .agent-bridge-overlay__badge {
-    position: absolute;
-    top: 18px;
-    left: 50%;
-    transform: translateX(-50%);
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 18px;
+    gap: 7px;
+    padding: 4px 10px;
     border-radius: 999px;
-    background: rgba(10, 60, 180, 0.92);
-    color: #fff;
-    font-size: 14px;
+    background: rgba(24, 28, 36, 0.85);
+    color: #e8edf6;
+    font-size: 12px;
     font-weight: 600;
-    letter-spacing: 0.02em;
-    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
-    white-space: nowrap;
+    line-height: 1;
+    letter-spacing: 0.01em;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    opacity: 0;
+    transition: opacity 0.15s ease;
 }
-#agent-bridge-overlay .agent-bridge-overlay__dot {
-    width: 9px;
-    height: 9px;
+#agent-bridge-status.is-visible { opacity: 1; }
+#agent-bridge-status .agent-bridge-status__dot {
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
-    background: #7ec8ff;
-    box-shadow: 0 0 8px 2px rgba(126, 200, 255, 0.9);
+    background: #9ca3af;
+    flex: none;
+}
+#agent-bridge-status[data-tone="connected"] .agent-bridge-status__dot {
+    background: #22c55e;
+    box-shadow: 0 0 6px 1px rgba(34, 197, 94, 0.7);
+}
+#agent-bridge-status[data-tone="active"] .agent-bridge-status__dot {
+    background: #3898ff;
+    box-shadow: 0 0 6px 1px rgba(56, 152, 255, 0.8);
+    animation: agentBridgeDotPulse 1s ease-in-out infinite;
 }`;
         document.head.appendChild(style);
     }
 
     const el = document.createElement("div");
-    el.id = "agent-bridge-overlay";
-    el.setAttribute("aria-hidden", "true");
-    const badge = document.createElement("div");
-    badge.className = "agent-bridge-overlay__badge";
+    el.id = "agent-bridge-status";
+    el.setAttribute("aria-live", "polite");
     const dot = document.createElement("span");
-    dot.className = "agent-bridge-overlay__dot";
+    dot.className = "agent-bridge-status__dot";
     const text = document.createElement("span");
-    text.className = "agent-bridge-overlay__text";
-    text.textContent = label;
-    badge.append(dot, text);
-    el.appendChild(badge);
+    text.className = "agent-bridge-status__text";
+    el.append(dot, text);
     document.body.appendChild(el);
-    overlayEl = el;
+    badgeEl = el;
     return el;
 }
 
-export function showAgentOverlay(label) {
-    const el = ensureOverlay(label);
-    const text = el.querySelector(".agent-bridge-overlay__text");
-    if (text && label) {
-        text.textContent = label;
+/**
+ * @param {{visible: boolean, tone: "idle"|"connected"|"active", text: string}} status
+ */
+export function renderAgentStatus({ visible, tone, text }) {
+    if (!visible) {
+        badgeEl?.classList.remove("is-visible");
+        return;
     }
+    const el = ensureBadge();
+    el.dataset.tone = tone;
+    el.querySelector(".agent-bridge-status__text").textContent = text;
     // force reflow so the opacity transition runs even right after creation
     void el.offsetWidth;
     el.classList.add("is-visible");
-}
-
-export function hideAgentOverlay() {
-    overlayEl?.classList.remove("is-visible");
 }

@@ -17,11 +17,9 @@ vi.mock("../../../src/js/ConfigStorage.js", () => ({
 }));
 vi.mock("../../../src/js/gui_log.js", () => ({ gui_log: (msg) => mockGuiLog(msg) }));
 vi.mock("../../../src/js/localization.js", () => ({ i18n: { getMessage: (key) => key } }));
-const mockShowOverlay = vi.fn();
-const mockHideOverlay = vi.fn();
+const mockRenderStatus = vi.fn();
 vi.mock("../../../src/js/agent_bridge/overlay.js", () => ({
-    showAgentOverlay: (...a) => mockShowOverlay(...a),
-    hideAgentOverlay: (...a) => mockHideOverlay(...a),
+    renderAgentStatus: (...a) => mockRenderStatus(...a),
 }));
 
 class FakeWebSocket {
@@ -104,21 +102,19 @@ describe("startAgentBridge", () => {
         unsubscribe();
     });
 
-    it("shows the blue overlay only while a command runs, hiding as soon as it finishes", async () => {
-        mockShowOverlay.mockClear();
-        mockHideOverlay.mockClear();
+    it("marks the status badge active only while a command runs", async () => {
+        mockRenderStatus.mockClear();
         setAgentBridgeEnabled(true);
         const socket = FakeWebSocket.instances.at(-1);
 
         // onActivity(method) fires synchronously before the handler awaits,
-        // so the overlay shows immediately when the command starts
+        // so the badge goes "active" the moment the command starts
         const done = socket.onmessage({ data: JSON.stringify({ id: 1, method: "ping", params: { value: 1 } }) });
-        expect(mockShowOverlay).toHaveBeenCalled();
-        expect(mockHideOverlay).not.toHaveBeenCalled(); // still running
+        expect(mockRenderStatus).toHaveBeenCalledWith(expect.objectContaining({ visible: true, tone: "active" }));
 
-        // no linger: hidden the moment the command completes
+        // no linger: badge leaves "active" the moment the command completes
         await done;
-        expect(mockHideOverlay).toHaveBeenCalled();
+        expect(mockRenderStatus.mock.calls.at(-1)[0].tone).not.toBe("active");
 
         setAgentBridgeEnabled(false);
     });

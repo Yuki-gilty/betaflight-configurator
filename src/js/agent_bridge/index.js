@@ -1,5 +1,5 @@
 import { createHandlers } from "./handlers.js";
-import { showAgentOverlay, hideAgentOverlay } from "./overlay.js";
+import { renderAgentStatus } from "./overlay.js";
 import { get as getConfig, set as setConfig } from "../ConfigStorage.js";
 import { gui_log } from "../gui_log.js";
 import { i18n } from "../localization.js";
@@ -88,18 +88,30 @@ function setActive(active) {
 function handleActivity(method) {
     if (method !== null) {
         inFlight += 1;
-        showAgentOverlay(i18n.getMessage("agentBridgeOverlayLabel"));
         setActive(true);
     } else {
         inFlight = Math.max(0, inFlight - 1);
         if (inFlight === 0) {
-            hideAgentOverlay();
             setActive(false);
         }
     }
 }
 
+function renderStatusBadge() {
+    let tone = "idle";
+    let textKey = "agentBridgeStatusWaiting";
+    if (state.active) {
+        tone = "active";
+        textKey = "agentBridgeStatusActive";
+    } else if (state.connected) {
+        tone = "connected";
+        textKey = "agentBridgeStatusConnected";
+    }
+    renderAgentStatus({ visible: state.enabled, tone, text: i18n.getMessage(textKey) });
+}
+
 function notifyListeners() {
+    renderStatusBadge();
     for (const listener of listeners) {
         listener({ ...state });
     }
@@ -127,7 +139,6 @@ function stop() {
     stopBridge?.();
     stopBridge = null;
     inFlight = 0;
-    hideAgentOverlay();
     state.active = false;
     state.enabled = false;
     if (state.connected) {
