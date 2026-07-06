@@ -43,6 +43,9 @@ async function refreshPids() {
 }
 
 // Shared read-modify-write cycle for flat numeric sections (rates, filters).
+// One read (to preserve fields the caller didn't specify) + one write.
+// No post-write read-back: the write echoes what we already hold in memory,
+// so re-reading only adds a serial round-trip of latency.
 async function updateSection({ readCode, writeCode, getTarget, values }) {
     requireFc();
     await MSP.promise(readCode, false);
@@ -55,7 +58,6 @@ async function updateSection({ readCode, writeCode, getTarget, values }) {
     }
     Object.assign(target, values);
     await MSP.promise(writeCode, mspHelper.crunch(writeCode));
-    await MSP.promise(readCode, false);
     return { ...getTarget() };
 }
 
@@ -97,7 +99,19 @@ export function createHandlers() {
 
         async set_pid_tuning(params) {
             requireFc();
-            await refreshPids();
+            // P/I/D live in MSP_PID; FF lives in MSP_PID_ADVANCED. Only touch the
+            // message(s) actually affected, and read just those (to preserve the
+            // fields we aren't changing) — avoids up to 4 extra serial round-trips.
+            const axisChanges = AXES.map(([axis]) => params?.[axis]).filter(Boolean);
+            const touchesPid = axisChanges.some((c) => PID_TERMS.some(([term]) => c[term] !== undefined));
+            const touchesFf = axisChanges.some((c) => c.FF !== undefined);
+
+            if (touchesPid) {
+                await MSP.promise(MSPCodes.MSP_PID, false);
+            }
+            if (touchesFf) {
+                await MSP.promise(MSPCodes.MSP_PID_ADVANCED, false);
+            }
             for (const [axis, index, ffKey] of AXES) {
                 const changes = params?.[axis];
                 if (!changes) {
@@ -112,9 +126,12 @@ export function createHandlers() {
                     FC.ADVANCED_TUNING[ffKey] = changes.FF;
                 }
             }
-            await MSP.promise(MSPCodes.MSP_SET_PID, mspHelper.crunch(MSPCodes.MSP_SET_PID));
-            await MSP.promise(MSPCodes.MSP_SET_PID_ADVANCED, mspHelper.crunch(MSPCodes.MSP_SET_PID_ADVANCED));
-            await refreshPids();
+            if (touchesPid) {
+                await MSP.promise(MSPCodes.MSP_SET_PID, mspHelper.crunch(MSPCodes.MSP_SET_PID));
+            }
+            if (touchesFf) {
+                await MSP.promise(MSPCodes.MSP_SET_PID_ADVANCED, mspHelper.crunch(MSPCodes.MSP_SET_PID_ADVANCED));
+            }
             return pidSnapshot();
         },
 

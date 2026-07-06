@@ -111,6 +111,32 @@ describe("agent bridge handlers", () => {
         expect(result.roll.P).toBe(47);
     });
 
+    it("set_pid_tuning touches only MSP_PID when no FF changes (fewer round-trips)", async () => {
+        await handlers.set_pid_tuning({ roll: { P: 47 } });
+        expect(mockCrunch).toHaveBeenCalledWith(MSPCodes.MSP_SET_PID);
+        expect(mockCrunch).not.toHaveBeenCalledWith(MSPCodes.MSP_SET_PID_ADVANCED);
+        expect(mockMSP.promise).not.toHaveBeenCalledWith(MSPCodes.MSP_PID_ADVANCED, false);
+        // 2 round-trips total: one read (MSP_PID) + one write (MSP_SET_PID)
+        expect(mockMSP.promise).toHaveBeenCalledTimes(2);
+    });
+
+    it("set_pid_tuning touches only MSP_PID_ADVANCED when only FF changes", async () => {
+        await handlers.set_pid_tuning({ yaw: { FF: 90 } });
+        expect(mockFC.ADVANCED_TUNING.feedforwardYaw).toBe(90);
+        expect(mockCrunch).toHaveBeenCalledWith(MSPCodes.MSP_SET_PID_ADVANCED);
+        expect(mockCrunch).not.toHaveBeenCalledWith(MSPCodes.MSP_SET_PID);
+        expect(mockMSP.promise).not.toHaveBeenCalledWith(MSPCodes.MSP_PID, false);
+        expect(mockMSP.promise).toHaveBeenCalledTimes(2);
+    });
+
+    it("set_rates applies with a single read + write (no read-back)", async () => {
+        await handlers.set_rates({ values: { roll_rate: 0.9 } });
+        // MSP_RC_TUNING read once, MSP_SET_RC_TUNING written once
+        expect(mockMSP.promise).toHaveBeenCalledTimes(2);
+        expect(mockMSP.promise).toHaveBeenCalledWith(MSPCodes.MSP_RC_TUNING, false);
+        expect(mockMSP.promise).toHaveBeenCalledWith(MSPCodes.MSP_SET_RC_TUNING, expect.any(Uint8Array));
+    });
+
     it("set_rates updates known keys and rejects unknown keys", async () => {
         const result = await handlers.set_rates({ values: { roll_rate: 0.9 } });
         expect(mockFC.RC_TUNING.roll_rate).toBe(0.9);
