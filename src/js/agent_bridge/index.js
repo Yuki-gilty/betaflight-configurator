@@ -73,11 +73,9 @@ const state = { enabled: false, connected: false, active: false };
 const listeners = new Set();
 let stopBridge = null;
 
-// Overlay activity tracking: keep the blue overlay up while any command runs,
-// and linger briefly after the last one so quick commands remain perceptible.
-const OVERLAY_LINGER_MS = 700;
+// Overlay activity tracking: show the blue overlay only while a read/write is
+// actually in flight, and hide it the moment the last one finishes (no linger).
 let inFlight = 0;
-let overlayHideTimer = null;
 
 function setActive(active) {
     if (state.active === active) {
@@ -90,20 +88,13 @@ function setActive(active) {
 function handleActivity(method) {
     if (method !== null) {
         inFlight += 1;
-        if (overlayHideTimer) {
-            clearTimeout(overlayHideTimer);
-            overlayHideTimer = null;
-        }
         showAgentOverlay(i18n.getMessage("agentBridgeOverlayLabel"));
         setActive(true);
     } else {
         inFlight = Math.max(0, inFlight - 1);
         if (inFlight === 0) {
-            overlayHideTimer = setTimeout(() => {
-                overlayHideTimer = null;
-                hideAgentOverlay();
-                setActive(false);
-            }, OVERLAY_LINGER_MS);
+            hideAgentOverlay();
+            setActive(false);
         }
     }
 }
@@ -135,10 +126,6 @@ function start() {
 function stop() {
     stopBridge?.();
     stopBridge = null;
-    if (overlayHideTimer) {
-        clearTimeout(overlayHideTimer);
-        overlayHideTimer = null;
-    }
     inFlight = 0;
     hideAgentOverlay();
     state.active = false;

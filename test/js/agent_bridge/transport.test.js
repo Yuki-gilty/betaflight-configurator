@@ -104,8 +104,7 @@ describe("startAgentBridge", () => {
         unsubscribe();
     });
 
-    it("shows the blue overlay while a command runs and hides it after a linger", async () => {
-        vi.useFakeTimers();
+    it("shows the blue overlay only while a command runs, hiding as soon as it finishes", async () => {
         mockShowOverlay.mockClear();
         mockHideOverlay.mockClear();
         setAgentBridgeEnabled(true);
@@ -115,10 +114,9 @@ describe("startAgentBridge", () => {
         // so the overlay shows immediately when the command starts
         const done = socket.onmessage({ data: JSON.stringify({ id: 1, method: "ping", params: { value: 1 } }) });
         expect(mockShowOverlay).toHaveBeenCalled();
-        expect(mockHideOverlay).not.toHaveBeenCalled();
+        expect(mockHideOverlay).not.toHaveBeenCalled(); // still running
 
-        // flush the handler microtask and the linger timer
-        await vi.runAllTimersAsync();
+        // no linger: hidden the moment the command completes
         await done;
         expect(mockHideOverlay).toHaveBeenCalled();
 
