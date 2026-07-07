@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { serialDevices, vendorIdNames } from "./devices";
+import { get as getConfig } from "../ConfigStorage";
 import GUI from "../gui";
 
 const logHead = "[TAURI SERIAL]";
@@ -38,6 +39,28 @@ function parseId(value) {
         return undefined;
     }
     return typeof value === "number" ? value : Number.parseInt(value, 10);
+}
+
+/**
+ * The plugin fills missing string fields with the literal "Unknown"; treat
+ * that (and empty strings) as absent.
+ */
+function cleanInfoString(value) {
+    return value && value !== "Unknown" ? value : undefined;
+}
+
+/**
+ * macOS exposes every serial device twice (/dev/tty.X dial-in and /dev/cu.X
+ * call-out). Betaflight only needs the call-out side, so drop a tty. entry
+ * when its cu. twin is present.
+ */
+function dedupeMacTtyCuPairs(ports) {
+    const cuNames = new Set(
+        ports.filter((port) => port.path.startsWith("/dev/cu.")).map((port) => port.path.slice("/dev/cu.".length)),
+    );
+    return ports.filter(
+        (port) => !port.path.startsWith("/dev/tty.") || !cuNames.has(port.path.slice("/dev/tty.".length)),
+    );
 }
 
 /**
@@ -152,32 +175,46 @@ class TauriSerial extends EventTarget {
 
             return {
                 path,
-                displayName: this.getDisplayName(path, vendorId, productId),
+                displayName: this.getDisplayName(path, vendorId, productId, info),
                 vendorId,
                 productId,
-                serialNumber: info.serial_number,
+                serialNumber: cleanInfoString(info.serial_number),
+                portType: info.type,
             };
         });
     }
 
     /**
-     * Filter ports to only include known Betaflight-compatible devices.
+     * Whether the user asked to see every enumerated port (Options →
+     * "Show all serial devices"). Read per scan so toggling the option
+     * takes effect on the next poll without a restart.
      * @private
      */
-    _filterToKnownDevices(ports) {
-        return ports.filter((port) => {
-            if (!port.vendorId || !port.productId) {
-                return false;
-            }
-            return serialDevices.some((d) => d.vendorId === port.vendorId && d.productId === port.productId);
-        });
+    _showAllConfigured() {
+        return !!getConfig("showAllSerialDevices", false).showAllSerialDevices;
+    }
+
+    /**
+     * Decide which enumerated ports to surface in the picker. Unlike the web
+     * build there is no browser permission dialog to fall back on, so every
+     * USB port is shown — flight controllers always enumerate as USB CDC, but
+     * not always with a whitelisted VID/PID. Non-USB entries (Bluetooth
+     * modems, PCI UARTs, unknowns) are noise unless the user opted in.
+     * @private
+     */
+    _selectVisiblePorts(ports, showAll) {
+        const deduped = dedupeMacTtyCuPairs(ports);
+        if (showAll ?? this._showAllConfigured()) {
+            return deduped;
+        }
+        return deduped.filter((port) => port.portType === "USB");
     }
 
     async checkDeviceChanges() {
         try {
             const portsMap = await invoke("plugin:serialplugin|available_ports");
             const allPorts = this._convertPortsMapToArray(portsMap);
-            const currentPorts = this._filterToKnownDevices(allPorts);
+            const currentPorts = this._selectVisiblePorts(allPorts);
 
             const removedPorts = this.ports.filter(
                 (oldPort) => !currentPorts.some((newPort) => newPort.path === oldPort.path),
@@ -202,11 +239,11 @@ class TauriSerial extends EventTarget {
         }
     }
 
-    async loadDevices() {
+    async loadDevices(showAll) {
         try {
             const portsMap = await invoke("plugin:serialplugin|available_ports");
             const allPorts = this._convertPortsMapToArray(portsMap);
-            this.ports = this._filterToKnownDevices(allPorts);
+            this.ports = this._selectVisiblePorts(allPorts, showAll);
 
             console.log(`${logHead} Found ${this.ports.length} serial ports (filtered from ${allPorts.length})`);
             return this.ports;
@@ -216,12 +253,14 @@ class TauriSerial extends EventTarget {
         }
     }
 
-    getDisplayName(path, vendorId, productId) {
-        if (vendorId && productId) {
+    getDisplayName(path, vendorId, productId, info = {}) {
+        const isKnownDevice = serialDevices.some((d) => d.vendorId === vendorId && d.productId === productId);
+        if (isKnownDevice) {
             const vendorName = vendorIdNames[vendorId] || `VID:${vendorId} PID:${productId}`;
             return `Betaflight ${vendorName}`;
         }
-        return path;
+        const productName = cleanInfoString(info.product) ?? cleanInfoString(info.manufacturer);
+        return productName ?? path;
     }
 
     async connect(path, { baudRate = 115200, dataBits, parityBit, parity, stopBits, flowControl } = {}) {
@@ -336,11 +375,11 @@ class TauriSerial extends EventTarget {
     /**
      * Tauri doesn't surface a browser-style permission prompt — the plugin
      * enumerates ports directly. Behave as a manual refresh for parity with
-     * WebSerial.requestPermissionDevice: re-scan and return the first known
-     * port (or null if none).
+     * WebSerial.requestPermissionDevice: re-scan (honoring the show-all flag,
+     * like the browser picker does) and return the first visible port.
      */
-    async requestPermissionDevice() {
-        await this.loadDevices();
+    async requestPermissionDevice(showAllDevices = false) {
+        await this.loadDevices(showAllDevices || undefined);
         const port = this.ports[0] ?? null;
         if (port) {
             console.info(`${logHead} Selected port from refresh:`, port.path);
