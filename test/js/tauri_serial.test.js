@@ -118,6 +118,66 @@ describe("TauriSerial port visibility", () => {
         expect(added).toEqual(["/dev/cu.usbserial-0001"]);
     });
 
+    it("connect resolves false and emits connect:false when the plugin open hangs", async () => {
+        vi.useFakeTimers();
+        try {
+            let resolveOpen;
+            invoke.mockImplementation((cmd) => {
+                if (cmd === "plugin:serialplugin|open") {
+                    return new Promise((resolve) => {
+                        resolveOpen = resolve;
+                    });
+                }
+                return Promise.resolve({});
+            });
+
+            const connectEvents = [];
+            protocol.addEventListener("connect", (e) => connectEvents.push(e.detail));
+
+            const connectPromise = protocol.connect("/dev/cu.usbmodem0x660", { baudRate: 115200 });
+            await vi.advanceTimersByTimeAsync(9000);
+
+            expect(await connectPromise).toBe(false);
+            expect(connectEvents).toEqual([false]);
+            expect(protocol.openRequested).toBe(false);
+
+            // The orphaned open resolving later must close the port it grabbed.
+            resolveOpen("ok");
+            await vi.advanceTimersByTimeAsync(0);
+            expect(invoke).toHaveBeenCalledWith("plugin:serialplugin|close", { path: "/dev/cu.usbmodem0x660" });
+
+            // And a fresh attempt must not be refused by stale in-flight state.
+            invoke.mockResolvedValue({});
+            expect(await protocol.connect("/dev/cu.usbmodem0x660", { baudRate: 115200 })).toBe(true);
+        } finally {
+            protocol.reading = false;
+            vi.useRealTimers();
+        }
+    });
+
+    it("forceClose cancels an in-flight open so the port closes once it resolves", async () => {
+        let resolveOpen;
+        invoke.mockImplementation((cmd) => {
+            if (cmd === "plugin:serialplugin|open") {
+                return new Promise((resolve) => {
+                    resolveOpen = resolve;
+                });
+            }
+            return Promise.resolve({});
+        });
+
+        const connectPromise = protocol.connect("/dev/cu.usbmodem0x660", { baudRate: 115200 });
+        await Promise.resolve();
+
+        protocol.forceClose();
+
+        resolveOpen("ok");
+        expect(await connectPromise).toBe(false);
+        expect(protocol.connected).toBe(false);
+        expect(protocol.openRequested).toBe(false);
+        expect(invoke).toHaveBeenCalledWith("plugin:serialplugin|close", { path: "/dev/cu.usbmodem0x660" });
+    });
+
     it("requestPermissionDevice rescans honoring the show-all flag", async () => {
         invoke.mockResolvedValue({
             "/dev/cu.Bluetooth-Incoming-Port": { type: "Unknown", vid: "Unknown", pid: "Unknown" },

@@ -473,6 +473,11 @@ function abortConnection(messageKey) {
     GUI.connected_to = false;
     GUI.connecting_to = false;
 
+    // Tear down the protocol-level attempt too. Without this a hung or
+    // late-resolving open leaves the protocol wedged (e.g. TauriSerial
+    // refusing every later connect), even though the UI looks recovered.
+    serial.forceClose();
+
     gui_log(message);
     showConnectionFailedDialog(message);
 

@@ -5,6 +5,14 @@ import GUI from "../gui";
 
 const logHead = "[TAURI SERIAL]";
 
+// How long to wait for the plugin's `open` before treating the attempt as
+// failed. Some macOS devices (e.g. Bluetooth modem ports) block the open
+// syscall indefinitely; without a deadline the in-flight flag wedges the
+// protocol and every later connect attempt is silently refused. Kept under
+// serial_backend's 10s connect watchdog so the user sees the failure dialog
+// from the protocol's own connect:false event, not just the generic timeout.
+const OPEN_TIMEOUT_MS = 8000;
+
 /**
  * Extract a best-effort message string from an error value of unknown shape
  * (string | Error | plugin-returned object). Flattened from a nested ternary
@@ -291,7 +299,7 @@ class TauriSerial extends EventTarget {
 
             console.log(`${logHead} Opening port ${path} at ${baudRate} baud`);
 
-            const openResult = await invoke("plugin:serialplugin|open", openOptions);
+            const openResult = await this._openWithTimeout(openOptions);
             console.log(`${logHead} Open result:`, openResult);
 
             // If disconnect() fired during the open await, abandon now and
@@ -345,6 +353,56 @@ class TauriSerial extends EventTarget {
             this.openCanceled = false;
             this.dispatchEvent(new CustomEvent("connect", { detail: false }));
             return false;
+        }
+    }
+
+    /**
+     * Invoke the plugin's `open` with a deadline. On timeout the attempt is
+     * treated as failed, and if the blocked open eventually succeeds anyway,
+     * the orphaned port is closed so it cannot wedge later attempts.
+     * @private
+     */
+    async _openWithTimeout(openOptions) {
+        const openPromise = invoke("plugin:serialplugin|open", openOptions);
+        let timer;
+        try {
+            return await Promise.race([
+                openPromise,
+                new Promise((_, reject) => {
+                    timer = setTimeout(
+                        () => reject(new Error(`Opening ${openOptions.path} timed out after ${OPEN_TIMEOUT_MS}ms`)),
+                        OPEN_TIMEOUT_MS,
+                    );
+                }),
+            ]);
+        } catch (error) {
+            openPromise
+                .then(() => {
+                    console.warn(`${logHead} Abandoned open of ${openOptions.path} resolved late — closing`);
+                    return invoke("plugin:serialplugin|close", { path: openOptions.path });
+                })
+                .catch(() => {});
+            throw error;
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+
+    /**
+     * Hard-reset the connection attempt/state. Called by serial_backend's
+     * abortConnection watchdog so a stuck or half-finished attempt can't
+     * leave the protocol wedged (in-flight open refusing every later
+     * connect, or an orphaned open port answering "already open" forever).
+     */
+    forceClose() {
+        if (this.openRequested && !this.connected) {
+            // In-flight open: flag it so connect() aborts and closes the port
+            // as soon as the plugin call returns.
+            this.openCanceled = true;
+            return;
+        }
+        if (this.connected) {
+            this.disconnect();
         }
     }
 
