@@ -327,6 +327,36 @@ describe("serial_backend disconnect convergence", () => {
         expect(switchTab.mock.calls.length).toBe(switchTabCallsAfterIntentional);
     });
 
+    it("INTENTIONAL disconnect completes even if the arming-enable MSP call never answers (wrong port)", async () => {
+        vi.useFakeTimers();
+        try {
+            establishConnection();
+            PortHandler.portPickerDisabled = true;
+            switchTab.mockClear();
+            mspHelperInstance.setArmingEnabled.mockClear();
+
+            disconnect();
+
+            // The device on the wrong port never answers MSP, so the
+            // setArmingEnabled callback never fires on its own.
+            expect(mspHelperInstance.setArmingEnabled).toHaveBeenCalledTimes(1);
+            expect(switchTab).not.toHaveBeenCalled();
+
+            await vi.advanceTimersByTimeAsync(2100);
+
+            // The deadline must run the teardown and unlock the port picker.
+            expect(switchTab).toHaveBeenCalledWith("landing", { mode: "disconnected" });
+            expect(PortHandler.portPickerDisabled).toBe(false);
+
+            // A late MSP answer must not run the teardown a second time.
+            const teardownCalls = switchTab.mock.calls.length;
+            mspHelperInstance.setArmingEnabled.mock.calls[0][2]();
+            expect(switchTab.mock.calls.length).toBe(teardownCalls);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it("a FAILED open does not mark the module connected (reconnect retries keep working)", () => {
         connectDisconnect();
         expect(serial.connect).toHaveBeenCalled();

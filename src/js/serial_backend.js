@@ -192,8 +192,23 @@ function beginDisconnect() {
     // the modal must stay up while the reboot's own reconnect runs.)
     closeRebootDialog();
 
-    mspHelper?.setArmingEnabled(true, false, function () {
-        finishClose(toggleStatus);
+    // Re-enabling arming is a courtesy MSP call. A device that is not actually a
+    // flight controller (wrong port picked) never answers it, so gate finishClose
+    // on a deadline too — otherwise the teardown never runs and the port picker
+    // stays locked until app restart. Plain setTimeout on purpose:
+    // prepareDisconnect() just ran GUI.timeout_kill_all(), which would kill a
+    // GUI-tracked timer.
+    let closed = false;
+    const finishOnce = () => {
+        if (!closed) {
+            closed = true;
+            finishClose(toggleStatus);
+        }
+    };
+    const armingAckDeadline = setTimeout(finishOnce, 2000);
+    mspHelper?.setArmingEnabled(true, false, () => {
+        clearTimeout(armingAckDeadline);
+        finishOnce();
     });
 }
 
