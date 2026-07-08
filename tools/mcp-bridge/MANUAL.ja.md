@@ -108,6 +108,7 @@ args = ["/Users/yukiyamamotopersonal/Repo/betaflight-configurator/tools/mcp-brid
 | PID を変える | 「ロールのPを47にして。ピッチのDも2下げて」 |
 | レートを見る/変える | 「レート設定を見せて」「roll_rate を 0.8 にして」 |
 | フィルタを変える | 「ジャイロのローパスフィルタを100Hzにして」 |
+| TPA・高度な設定 | 「TPAの設定を見せて」「アンチグラビティのゲインを教えて」「TPAレートを0.6にして」 |
 | 保存する | 「今の変更をFCに保存して」 |
 | 画面操作 | 「PIDチューニングのタブを開いて」「タブの一覧を見せて」 |
 | 相談しながら調整 | 「プロップウォッシュが気になる。Dタームまわりで試す価値のある変更を提案して、順番に適用して」 |
@@ -123,16 +124,17 @@ Claude は状況に応じて自動でこれらを使います(あなたが直接
 | ツール | 内容 |
 |---|---|
 | `get_status` | 接続状態・ファームウェア・機体名・現在のタブ |
-| `get_pid_tuning` | ロール/ピッチ/ヨーの P・I・D・FF |
-| `get_rates` | レート設定一式 |
-| `get_filters` | ジャイロ/D term フィルタ設定一式 |
+| `get_pid_tuning` | PIDタブの全項目: プロファイル情報(番号・名前)、各軸の P・I・D・D_MAX・FF、Angle/Horizon 設定、チューニングスライダー位置、高度な設定一式(TPA、アンチグラビティ、I-term relax、スロットルブースト、フィードフォワード詳細、Dynamic Idle、モーター出力リミットなど) |
+| `get_rates` | レート設定一式(レートタイプ等の選択値は `_labels` に名前つき) |
+| `get_filters` | ジャイロ/D term フィルタ設定一式(ダイナミックノッチ・RPMフィルタ・フィルタ乗数スライダー含む。フィルタタイプは `_labels` に PT1/BIQUAD 等の名前つき) |
 | `list_tabs` | 切替可能なタブの一覧 |
 
 ### 書き込み(FCのRAMに反映、保存は別)
 
 | ツール | 内容 |
 |---|---|
-| `set_pid_tuning` | 指定した軸・項目だけ変更(例: `{ roll: { P: 47 } }`) |
+| `set_pid_tuning` | 指定した軸・項目だけ変更(例: `{ roll: { P: 47, D_MAX: 40 } }`) |
+| `set_advanced_tuning` | TPA・アンチグラビティ・I-term relax などの高度な設定を変更(例: `{ values: { tpaRate: 0.6 } }`) |
 | `set_rates` | 指定したキーだけ変更(例: `{ values: { roll_rate: 0.8 } }`) |
 | `set_filters` | 指定したキーだけ変更(例: `{ values: { gyro_lowpass_hz: 100 } }`) |
 | `save_to_flash` | **FCのフラッシュに保存**(これで電源を切っても残る) |

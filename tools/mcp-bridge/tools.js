@@ -8,6 +8,7 @@ const axisShape = z
         P: z.number().int().min(0).max(255).optional(),
         I: z.number().int().min(0).max(255).optional(),
         D: z.number().int().min(0).max(255).optional(),
+        D_MAX: z.number().int().min(0).max(255).optional(),
         FF: z.number().int().min(0).max(2000).optional(),
     })
     .strict();
@@ -26,7 +27,8 @@ export function registerTools(server, relay) {
         "get_status",
         {
             description:
-                "Get Configurator/FC connection state, firmware version, craft name and the currently active tab.",
+                "Get Configurator/FC connection state, firmware version, craft name, active PID/rate " +
+                "profile numbers and the currently active tab.",
         },
         forward("get_status"),
     );
@@ -48,7 +50,18 @@ export function registerTools(server, relay) {
 
     server.registerTool(
         "get_pid_tuning",
-        { description: "Read current PID values (P/I/D/FF per roll/pitch/yaw axis) from the flight controller." },
+        {
+            description:
+                "Read the full PID tuning profile from the flight controller. Returns `profile` " +
+                "(active PID/rate profile index and names), `pids` (P/I/D/D_MAX/FF per roll/pitch/yaw axis), " +
+                "`level` (Angle/Horizon strength, transition, angle limit), `sliders` (simplified-tuning " +
+                "slider positions; 100 = UI 1.0) and `advanced` — the complete advanced-tuning profile: " +
+                "TPA (tpaMode/tpaRate/tpaBreakpoint), anti-gravity (antiGravityGain is UI value ×10), " +
+                "I-term relax, I-term rotation, throttle boost, D-max gain/advance, feedforward " +
+                "smoothing/boost/jitter/averaging/transition, motor output limit, dynamic idle (idleMinRpm), " +
+                "thrust linearization, vbat sag compensation, acro trainer, integrated yaw, cell count, " +
+                "and more. Enum fields are decoded in `_labels`.",
+        },
         forward("get_pid_tuning"),
     );
 
@@ -56,8 +69,9 @@ export function registerTools(server, relay) {
         "set_pid_tuning",
         {
             description:
-                "Set PID values on the flight controller (RAM only until save_to_flash). " +
-                "Pass only the axes/terms you want to change, e.g. { roll: { P: 47 } }.",
+                "Set per-axis PID values on the flight controller (RAM only until save_to_flash). " +
+                "Pass only the axes/terms you want to change, e.g. { roll: { P: 47, D_MAX: 40 } }. " +
+                "For non-axis parameters (TPA, anti-gravity, I-term relax...) use set_advanced_tuning.",
             inputSchema: {
                 roll: axisShape.optional(),
                 pitch: axisShape.optional(),
@@ -68,8 +82,27 @@ export function registerTools(server, relay) {
     );
 
     server.registerTool(
+        "set_advanced_tuning",
+        {
+            description:
+                "Set advanced PID-profile parameters (RAM only until save_to_flash): TPA " +
+                "(tpaMode/tpaRate/tpaBreakpoint), anti-gravity (antiGravityGain/antiGravityMode), " +
+                "I-term relax (itermRelax/itermRelaxType/itermRelaxCutoff), throttleBoost, " +
+                "dMaxGain/dMaxAdvance, feedforward_* and more. Pass only the keys to change, " +
+                "e.g. { values: { tpaRate: 0.6, tpaBreakpoint: 1350 } }. " +
+                "Call get_pid_tuning first to see current values and valid keys (in `advanced`).",
+            inputSchema: { values: z.record(z.string(), z.number()) },
+        },
+        forward("set_advanced_tuning"),
+    );
+
+    server.registerTool(
         "get_rates",
-        { description: "Read current rate settings (RC rate, expo, super rate, throttle curve...)." },
+        {
+            description:
+                "Read current rate settings (RC rate, expo, super rate, throttle curve, throttle limit, " +
+                "rates type...). Enum fields (rates_type, throttleLimitType) are decoded in `_labels`.",
+        },
         forward("get_rates"),
     );
 
@@ -86,7 +119,13 @@ export function registerTools(server, relay) {
 
     server.registerTool(
         "get_filters",
-        { description: "Read current gyro / D-term filter settings." },
+        {
+            description:
+                "Read all gyro / D-term filter settings: lowpass 1&2 (static + dynamic min/max), " +
+                "notch filters, dynamic notch (dyn_notch_*), RPM filter (gyro_rpm_notch_*) and yaw lowpass. " +
+                "Filter type enums (PT1/BIQUAD/PT2/PT3) are decoded in `_labels`. `_sliders` carries the " +
+                "gyro/D-term filter multiplier slider state (enabled flag + multiplier, 100 = UI 1.0).",
+        },
         forward("get_filters"),
     );
 

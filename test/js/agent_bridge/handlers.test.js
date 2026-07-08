@@ -17,7 +17,7 @@ const mockDataflashRead = vi.fn();
 
 vi.mock("../../../src/js/fc.js", () => ({ default: mockFC }));
 vi.mock("../../../src/js/msp.js", () => ({ default: mockMSP }));
-vi.mock("../../../src/js/data_storage.js", () => ({ default: mockCONFIGURATOR }));
+vi.mock("../../../src/js/data_storage.js", () => ({ default: mockCONFIGURATOR, API_VERSION_1_45: "1.45.0" }));
 vi.mock("../../../src/js/gui.js", () => ({ default: mockGUI }));
 vi.mock("../../../src/js/tab_switch.js", () => ({ switchTab: mockSwitchTab }));
 vi.mock("../../../src/js/msp/MSPHelper.js", () => ({
@@ -45,21 +45,54 @@ describe("agent bridge handlers", () => {
             [40, 30, 20],
             [41, 31, 21],
             [42, 32, 0],
+            [50, 75, 75],
         ];
-        mockFC.ADVANCED_TUNING = { feedforwardRoll: 100, feedforwardPitch: 101, feedforwardYaw: 102 };
-        mockFC.RC_TUNING = { roll_rate: 0.7, rcYawRate: 1.0 };
-        mockFC.FILTER_CONFIG = { gyro_lowpass_hz: 250, dterm_lowpass_hz: 150 };
+        mockFC.TUNING_SLIDERS = {
+            slider_pids_mode: 2,
+            slider_master_multiplier: 100,
+            slider_d_gain: 100,
+            slider_gyro_filter: 1,
+            slider_gyro_filter_multiplier: 100,
+            slider_dterm_filter: 1,
+            slider_dterm_filter_multiplier: 110,
+        };
+        mockFC.ADVANCED_TUNING = {
+            feedforwardRoll: 100,
+            feedforwardPitch: 101,
+            feedforwardYaw: 102,
+            dMaxRoll: 30,
+            dMaxPitch: 31,
+            dMaxYaw: 0,
+            dMaxGain: 37,
+            tpaMode: 0,
+            tpaRate: 0.65,
+            tpaBreakpoint: 1350,
+            antiGravityGain: 80,
+            antiGravityMode: 0,
+            itermRelax: 1,
+            itermRelaxType: 1,
+            itermRelaxCutoff: 15,
+            throttleBoost: 5,
+            levelAngleLimit: 60,
+        };
+        mockFC.RC_TUNING = { roll_rate: 0.7, rcYawRate: 1.0, rates_type: 3 };
+        mockFC.FILTER_CONFIG = { gyro_lowpass_hz: 250, dterm_lowpass_hz: 150, gyro_lowpass_type: 0 };
         mockFC.CONFIG = {
             flightControllerIdentifier: "BTFL",
             flightControllerVersion: "4.5.1",
             apiVersion: "1.46.0",
             craftName: "testquad",
             name: "",
+            profile: 0,
+            numProfiles: 4,
+            rateProfile: 2,
+            pidProfileNames: ["race day", "", "", ""],
+            rateProfileNames: ["", "", "smooth", ""],
         };
         handlers = createHandlers();
     });
 
-    it("get_status reports connection, firmware and active tab", async () => {
+    it("get_status reports connection, firmware, profiles and active tab", async () => {
         const status = await handlers.get_status();
         expect(status).toEqual({
             fcConnected: true,
@@ -67,6 +100,8 @@ describe("agent bridge handlers", () => {
             apiVersion: "1.46.0",
             craftName: "testquad",
             activeTab: "setup",
+            pidProfile: 1,
+            rateProfile: 3,
         });
     });
 
@@ -95,8 +130,52 @@ describe("agent bridge handlers", () => {
         const result = await handlers.get_pid_tuning();
         expect(mockMSP.promise).toHaveBeenCalledWith(MSPCodes.MSP_PID, false);
         expect(mockMSP.promise).toHaveBeenCalledWith(MSPCodes.MSP_PID_ADVANCED, false);
-        expect(result.roll).toEqual({ P: 40, I: 30, D: 20, FF: 100 });
-        expect(result.yaw).toEqual({ P: 42, I: 32, D: 0, FF: 102 });
+        expect(mockMSP.promise).toHaveBeenCalledWith(MSPCodes.MSP_SIMPLIFIED_TUNING, false);
+        expect(result.pids.roll).toEqual({ P: 40, I: 30, D: 20, D_MAX: 30, FF: 100 });
+        expect(result.pids.yaw).toEqual({ P: 42, I: 32, D: 0, D_MAX: 0, FF: 102 });
+    });
+
+    it("get_pid_tuning returns profile info, level settings and tuning sliders", async () => {
+        const result = await handlers.get_pid_tuning();
+        expect(result.profile).toEqual({
+            pidProfile: 1,
+            pidProfileName: "race day",
+            numProfiles: 4,
+            rateProfile: 3,
+            rateProfileName: "smooth",
+        });
+        // Profile names are fetched via MSP2_GET_TEXT on API 1.45+
+        expect(mockCrunch).toHaveBeenCalledWith(MSPCodes.MSP2_GET_TEXT, MSPCodes.PID_PROFILE_NAME);
+        expect(mockCrunch).toHaveBeenCalledWith(MSPCodes.MSP2_GET_TEXT, MSPCodes.RATE_PROFILE_NAME);
+        expect(result.level).toEqual({
+            angleStrength: 50,
+            horizonStrength: 75,
+            horizonTransition: 75,
+            angleLimit: 60,
+        });
+        expect(result.sliders).toMatchObject({ slider_master_multiplier: 100, slider_d_gain: 100 });
+        expect(result.sliders._labels.slider_pids_mode).toBe("RPY");
+    });
+
+    it("get_pid_tuning returns the full advanced tuning profile with decoded labels", async () => {
+        const result = await handlers.get_pid_tuning();
+        expect(result.advanced).toMatchObject({
+            tpaMode: 0,
+            tpaRate: 0.65,
+            tpaBreakpoint: 1350,
+            antiGravityGain: 80,
+            itermRelax: 1,
+            itermRelaxType: 1,
+            itermRelaxCutoff: 15,
+            throttleBoost: 5,
+            dMaxGain: 37,
+        });
+        expect(result.advanced._labels).toEqual({
+            antiGravityMode: "SMOOTH",
+            itermRelax: "RP",
+            itermRelaxType: "SETPOINT",
+            tpaMode: "PD",
+        });
     });
 
     it("set_pid_tuning updates only the requested terms and writes both MSP messages", async () => {
@@ -108,10 +187,10 @@ describe("agent bridge handlers", () => {
         expect(mockCrunch).toHaveBeenCalledWith(MSPCodes.MSP_SET_PID);
         expect(mockCrunch).toHaveBeenCalledWith(MSPCodes.MSP_SET_PID_ADVANCED);
         expect(mockMSP.promise).toHaveBeenCalledWith(MSPCodes.MSP_SET_PID, expect.any(Uint8Array));
-        expect(result.roll.P).toBe(47);
+        expect(result.pids.roll.P).toBe(47);
     });
 
-    it("set_pid_tuning touches only MSP_PID when no FF changes (fewer round-trips)", async () => {
+    it("set_pid_tuning touches only MSP_PID when no advanced changes (fewer round-trips)", async () => {
         await handlers.set_pid_tuning({ roll: { P: 47 } });
         expect(mockCrunch).toHaveBeenCalledWith(MSPCodes.MSP_SET_PID);
         expect(mockCrunch).not.toHaveBeenCalledWith(MSPCodes.MSP_SET_PID_ADVANCED);
@@ -120,13 +199,26 @@ describe("agent bridge handlers", () => {
         expect(mockMSP.promise).toHaveBeenCalledTimes(2);
     });
 
-    it("set_pid_tuning touches only MSP_PID_ADVANCED when only FF changes", async () => {
-        await handlers.set_pid_tuning({ yaw: { FF: 90 } });
+    it("set_pid_tuning touches only MSP_PID_ADVANCED when only FF or D_MAX changes", async () => {
+        await handlers.set_pid_tuning({ yaw: { FF: 90 }, pitch: { D_MAX: 42 } });
         expect(mockFC.ADVANCED_TUNING.feedforwardYaw).toBe(90);
+        expect(mockFC.ADVANCED_TUNING.dMaxPitch).toBe(42);
         expect(mockCrunch).toHaveBeenCalledWith(MSPCodes.MSP_SET_PID_ADVANCED);
         expect(mockCrunch).not.toHaveBeenCalledWith(MSPCodes.MSP_SET_PID);
         expect(mockMSP.promise).not.toHaveBeenCalledWith(MSPCodes.MSP_PID, false);
         expect(mockMSP.promise).toHaveBeenCalledTimes(2);
+    });
+
+    it("set_advanced_tuning updates known keys via MSP_SET_PID_ADVANCED and rejects unknown keys", async () => {
+        const result = await handlers.set_advanced_tuning({ values: { tpaRate: 0.5, throttleBoost: 7 } });
+        expect(mockFC.ADVANCED_TUNING.tpaRate).toBe(0.5);
+        expect(mockFC.ADVANCED_TUNING.throttleBoost).toBe(7);
+        expect(mockMSP.promise).toHaveBeenCalledWith(MSPCodes.MSP_PID_ADVANCED, false);
+        expect(mockCrunch).toHaveBeenCalledWith(MSPCodes.MSP_SET_PID_ADVANCED);
+        expect(result.tpaRate).toBe(0.5);
+        expect(result._labels.tpaMode).toBe("PD");
+
+        await expect(handlers.set_advanced_tuning({ values: { nope: 1 } })).rejects.toThrow(/unknown parameter.*nope/i);
     });
 
     it("set_rates applies with a single read + write (no read-back)", async () => {
@@ -151,6 +243,24 @@ describe("agent bridge handlers", () => {
         expect(mockFC.FILTER_CONFIG.gyro_lowpass_hz).toBe(100);
         expect(mockCrunch).toHaveBeenCalledWith(MSPCodes.MSP_SET_FILTER_CONFIG);
         expect(result.gyro_lowpass_hz).toBe(100);
+    });
+
+    it("get_filters and get_rates decode enum fields into _labels", async () => {
+        const filters = await handlers.get_filters();
+        expect(filters._labels.gyro_lowpass_type).toBe("PT1");
+        const rates = await handlers.get_rates();
+        expect(rates._labels.rates_type).toBe("ACTUAL");
+    });
+
+    it("get_filters includes the filter multiplier slider state", async () => {
+        const filters = await handlers.get_filters();
+        expect(mockMSP.promise).toHaveBeenCalledWith(MSPCodes.MSP_SIMPLIFIED_TUNING, false);
+        expect(filters._sliders).toEqual({
+            gyro_filter_enabled: 1,
+            gyro_filter_multiplier: 100,
+            dterm_filter_enabled: 1,
+            dterm_filter_multiplier: 110,
+        });
     });
 
     it("save_to_flash sends MSP_EEPROM_WRITE", async () => {

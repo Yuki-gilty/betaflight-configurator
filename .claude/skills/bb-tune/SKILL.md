@@ -23,6 +23,10 @@ Betaflight MCPブリッジ(`betaflight` MCPサーバー)と解析スクリプト
    - `download_blackbox` を呼び、`blackbox_download_status` を5〜10秒間隔でポーリング
      (数MBで1分程度かかる。進捗%をユーザーに随時報告)
 2. **現在設定の取得**: `get_pid_tuning` / `get_filters` / `get_rates` で現状を控える
+   - `get_pid_tuning` は `profile`(プロファイル番号・名前)、`pids`(各軸 P/I/D/D_MAX/FF)、
+     `level`(Angle/Horizon)、`sliders`(スライダー位置)、`advanced`(TPA・アンチグラビティ・
+     iterm relax・throttleBoost・feedforward詳細など)を返す。提案の根拠に advanced も使う
+   - enum系の値は `_labels` に名前(PT1/BIQUAD、SETPOINT、ACTUAL等)が入っている
 3. **解析**: `python3 tools/mcp-bridge/analyze_bbl.py <path.bbl> --json /tmp/bbl_analysis.json`
    を実行し、JSONを読む(.bblヘッダーのPID/フィルタ設定も入っている)
 4. **解釈と提案** — 以下の目安で各軸を判定:
@@ -30,6 +34,9 @@ Betaflight MCPブリッジ(`betaflight` MCPサーバー)と解析スクリプト
    - overshoot_pct < 0〜3% かつ rise_time が遅い(>25ms) → P不足。Pを5〜10%上げる
    - トレース末尾が1.0に届かない/ゆっくり漸近 → I不足。Iを10%上げる
    - トレースに減衰振動 → Dを上げる。ただしgyro_noiseの80-200Hz帯が大きい場合はDを上げる前にフィルタ(dterm_lowpass)を検討
+   - プロップウォッシュ由来の揺れ → D_MAX(各軸)や dMaxGain の引き上げも選択肢(set_pid_tuning の D_MAX / set_advanced_tuning)
+   - 高スロットルでのみ振動 → PIDではなく TPA(advanced の tpaRate/tpaBreakpoint)を先に見る
+   - フリップ/ロール後の跳ね返りが I 由来 → itermRelax の設定(advanced)も確認する
    - gyro_noise の dominant_peak_hz が明確(モーターノイズ)で0-80Hz帯まで漏れている → フィルタ強化を提案
    - motors.saturated_pct > 5% → 出力飽和。PIDを上げる提案はしない
    - windows_used が少ない(<10)軸は信頼度が低いと明記する
@@ -42,7 +49,7 @@ Betaflight MCPブリッジ(`betaflight` MCPサーバー)と解析スクリプト
    |---|---|---|---|---|
    | Roll | P | 45 | 47 | 立ち上がり28msと遅め |
 
-6. **適用**: `set_pid_tuning` / `set_filters` で適用(RAMのみ)。適用後の値を読み返して確認
+6. **適用**: `set_pid_tuning` / `set_filters` / `set_advanced_tuning`(TPA等)で適用(RAMのみ)。適用後の値を読み返して確認
 7. **締め**: 以下を必ず伝える
    - 変更はRAM上のみで、電源再投入で元に戻ること
    - 試験飛行して良ければ「保存して」で `save_to_flash` すること(勝手に保存しない)

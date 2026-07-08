@@ -57,14 +57,19 @@ stays alive and takes over automatically once the first one exits.
 | --- | --- |
 | `get_status` | Connection state, firmware, craft name, active tab |
 | `list_tabs` / `switch_tab` | Inspect and drive UI tab navigation |
-| `get_pid_tuning` / `set_pid_tuning` | P/I/D/FF per axis, partial updates (`{ roll: { P: 47 } }`) |
+| `get_pid_tuning` / `set_pid_tuning` | `profile` (active PID/rate profile + names), `pids` (P/I/D/D_MAX/FF per axis), `level` (Angle/Horizon), `sliders` (simplified-tuning sliders) + `advanced` (full advanced-tuning profile: TPA, anti-gravity, I-term relax, feedforward details...). Partial updates (`{ roll: { P: 47 } }`) |
+| `set_advanced_tuning` | Advanced PID-profile parameters (tpaRate, antiGravityGain, itermRelax, throttleBoost...), partial updates by key |
 | `get_rates` / `set_rates` | Rate parameters, partial updates by key |
-| `get_filters` / `set_filters` | Gyro/D-term filter parameters, partial updates by key |
+| `get_filters` / `set_filters` | Gyro/D-term filter parameters incl. dynamic notch & RPM filter (+ filter multiplier slider state in `_sliders`), partial updates by key |
 | `save_to_flash` | Persist RAM changes to flash (destructive - confirm first) |
 | `get_blackbox_info` | Onboard dataflash state (supported/used bytes) |
 | `download_blackbox` / `blackbox_download_status` | Background download of the blackbox log to a local .bbl |
 | `erase_blackbox` | Erase onboard dataflash (destructive - confirm first) |
 | `msp_command` | Raw MSP escape hatch (advanced) |
+
+Read tools decode enum fields (filter types PT1/BIQUAD/PT2/PT3, rates type,
+TPA mode, I-term relax type, ...) into a `_labels` companion object returned
+alongside the raw numeric values.
 
 ## Blackbox auto-tuning
 
